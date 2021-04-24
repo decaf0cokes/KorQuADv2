@@ -64,8 +64,10 @@ def replace_table_tags(tag, sort):
     return tag_replaced
 
 def main():
+    # Load train data.
     documents=load_train()
 
+    # Process HTML tags("td", "th") in contexts.
     print("Processing HTML Tags..")
     tags_html=[]
     for idx, document in enumerate(documents):
@@ -82,19 +84,55 @@ def main():
         tags_html=list(set(tags_html+re.findall("<[^>]*>", context)))
         documents[idx]['context']=context
     print("Done!")
+    
+    # Add index where answers end.
+    for document in documents:
+        qas=document['qas']
+        for qa in qas:
+            answer=qa['answer']['text']
+            index_start=qa['answer']['answer_start']
+            index_end=index_start+len(answer)
+            qa['answer']['answer_end']=index_end
 
+    # Replace [unusedX] in vocab with HTML tags.
+    # Also, add HTML tags to special tokens.
     tokenizer=ElectraTokenizer.from_pretrained("monologg/koelectra-base-v3-discriminator")
     for idx, tag in enumerate(sorted(tags_html)):
         tokenizer.vocab[tag]=tokenizer.vocab["[unused{}]".format(idx)]
         del tokenizer.vocab["[unused{}]".format(idx)]
     tokenizer.add_special_tokens({'additional_special_tokens':sorted(tags_html)})
 
+    # Encode contexts.
+    """
     contexts_encoded=[]
     for idx, document in enumerate(documents):
         print("Encoding", idx+1, "th Document..")
         contexts_encoded.append(tokenizer.encode(document['context']))
     with open('./pickles/contexts_encoded.pkl', 'wb') as f:
         pickle.dump(contexts_encoded, f)
+        f.close()
+    """
+    
+    # Encode questions and find token index where answers start/end.
+    qas_encoded=[]
+    for idx, document in enumerate(documents):
+        context=document['context']
+        qas=document['qas']
+
+        qas_encoded_element=[]
+        for qa in qas:
+            question=tokenizer.encode(qa['question'])
+            
+            index_start=qa['answer']['answer_start']
+            index_end=qa['answer']['answer_end']
+
+            token_start=len(tokenizer.tokenize(context[0:index_start]))
+            token_end=token_start+len(tokenizer.tokenize(context[index_start:index_end]))
+
+            qas_encoded_element.append({'question':question, 'token_start':token_start, 'token_end':token_end})
+        qas_encoded.append(qas_encoded_element)
+    with open('./pickles/qas_encoded.pkl', 'wb') as f:
+        pickle.dump(qas_encoded, f)
         f.close()
 
 if __name__=="__main__":
