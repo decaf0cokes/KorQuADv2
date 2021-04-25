@@ -22,7 +22,7 @@ def load_train(path='./KorQuADv2/'):
             documents.append(document)
     print("Total", len(documents), "Documents")
 
-    return documents        
+    return documents
 
 def replace_table_tags(tag, sort):
     soup=BeautifulSoup(tag, 'html.parser')
@@ -94,6 +94,7 @@ def main():
             index_end=index_start+len(answer)
             qa['answer']['answer_end']=index_end
 
+    # Load pre-trained tokenizer.
     # Replace [unusedX] in vocab with HTML tags.
     # Also, add HTML tags to special tokens.
     tokenizer=ElectraTokenizer.from_pretrained("monologg/koelectra-base-v3-discriminator")
@@ -103,7 +104,6 @@ def main():
     tokenizer.add_special_tokens({'additional_special_tokens':sorted(tags_html)})
 
     # Encode contexts.
-    """
     contexts_encoded=[]
     for idx, document in enumerate(documents):
         print("Encoding", idx+1, "th Document..")
@@ -111,11 +111,15 @@ def main():
     with open('./pickles/contexts_encoded.pkl', 'wb') as f:
         pickle.dump(contexts_encoded, f)
         f.close()
-    """
+    # Load encoded contexts from pkl file.
+    # with open('./pickles/contexts_encoded.pkl', 'rb') as f:
+    #     contexts_encoded=pickle.load(f)
+    #     f.close()
     
-    # Encode questions and find token index where answers start/end.
+    # Encode questions and add token positions where answers start/end.
     qas_encoded=[]
     for idx, document in enumerate(documents):
+        print("Encoding", idx+1, "th Document..")
         context=document['context']
         qas=document['qas']
 
@@ -134,6 +138,10 @@ def main():
     with open('./pickles/qas_encoded.pkl', 'wb') as f:
         pickle.dump(qas_encoded, f)
         f.close()
+    # Load encoded questions/token positions from pkl file.
+    # with open('./pickles/qas_encoded.pkl', 'rb') as f:
+    #     qas_encoded=pickle.load(f)
+    #     f.close()
 
 if __name__=="__main__":
     main()
