@@ -1,98 +1,28 @@
-import os
-import json
 import re
-from bs4 import BeautifulSoup
 import pickle
 from transformers import ElectraTokenizer
 
-def load_train(path='./KorQuADv2/'):
-    files=os.listdir(path)
-
-    datas=[]
-    for file in sorted(files):
-        if file.split("_")[1]=="train":
-            print(file)
-            with open(path+file, 'r') as f:
-                datas.append(json.load(f))
-                f.close()
-    
-    documents=[]
-    for data in datas:
-        for document in data['data']:
-            documents.append(document)
-    print("Total", len(documents), "Documents")
-
-    return documents
-
-def replace_table_tags(tag, sort):
-    soup=BeautifulSoup(tag, 'html.parser')
-
-    if sort=="td":
-        try:
-            colspan=soup.td['colspan']
-        except(ValueError, KeyError):
-            colspan=None
-
-        try:
-            rowspan=soup.td['rowspan']
-        except(ValueError, KeyError):
-            rowspan=None
-
-    if sort=="th":
-        try:
-            colspan=soup.th['colspan']
-        except(ValueError, KeyError):
-            colspan=None
-
-        try:
-            rowspan=soup.th['rowspan']
-        except(ValueError, KeyError):
-            rowspan=None
-    
-    if colspan is not None and rowspan is not None:
-        tag_replaced="<{} cs rs>{} {}".format(sort, colspan, sort, rowspan)
-    elif colspan is not None and rowspan is None:
-        tag_replaced="<{} cs>{}".format(sort, colspan)
-    elif colspan is None and rowspan is not None:
-        tag_replaced="<{} rs>{}".format(sort, rowspan)
-    else:
-        tag_replaced="<{}>".format(sort)
-            
-    if len(tag)>len(tag_replaced):
-        tag_replaced=tag_replaced+" "*(len(tag)-len(tag_replaced))
-
-    return tag_replaced
+from utils import load_data, preprocess
 
 def main():
-    # Load train data.
-    documents=load_train()
-
-    # Process HTML tags("td", "th") in contexts.
-    print("Processing HTML Tags..")
-    tags_html=[]
-    for idx, document in enumerate(documents):
-        context=document['context']
-
-        tags_td=list(set(re.findall("<td[^>]*>", context)))
-        for tag in tags_td:
-            context=re.sub(tag, replace_table_tags(tag=tag, sort="td"), context)
-
-        tags_th=list(set(re.findall("<th[^>]*>", context)))
-        for tag in tags_th:
-            context=re.sub(tag, replace_table_tags(tag=tag, sort="th"), context)
-        
-        tags_html=list(set(tags_html+re.findall("<[^>]*>", context)))
-        documents[idx]['context']=context
-    print("Done!")
+    """
+    Process "train" data.
+    """
+    # Load "train" data.
+    documents_train=load_data(path='./KorQuADv2/', sort="train")
     
-    # Add index where answers end.
-    for document in documents:
-        qas=document['qas']
-        for qa in qas:
-            answer=qa['answer']['text']
-            index_start=qa['answer']['answer_start']
-            index_end=index_start+len(answer)
-            qa['answer']['answer_end']=index_end
+    # Preprocess "train" data.
+    preprocess(documents_train)
+
+    # Find all HTML tags in "train" data.
+    tags_html=[]
+    for document in documents_train:
+        context=document['context']
+        tags_html=list(set(tags_html+re.findall("<[^>]*>", context)))
+    # Save HTML tags list as .pkl file.
+    with open('./pickles/tags_html.pkl', 'wb') as f:
+        pickle.dump(sorted(tags_html), f)
+        f.close()
 
     # Load pre-trained tokenizer.
     # Replace [unusedX] in vocab with HTML tags.
@@ -102,23 +32,29 @@ def main():
         tokenizer.vocab[tag]=tokenizer.vocab["[unused{}]".format(idx)]
         del tokenizer.vocab["[unused{}]".format(idx)]
     tokenizer.add_special_tokens({'additional_special_tokens':sorted(tags_html)})
-
-    # Encode contexts.
+    
+    # Encode "train" contexts.
     contexts_encoded=[]
-    for idx, document in enumerate(documents):
+    for idx, document in enumerate(documents_train):
         print("Encoding", idx+1, "th Document..")
         contexts_encoded.append(tokenizer.encode(document['context']))
+    # Save encoded "train" contexts as .pkl file.
     with open('./pickles/contexts_encoded.pkl', 'wb') as f:
         pickle.dump(contexts_encoded, f)
         f.close()
-    # Load encoded contexts from pkl file.
-    # with open('./pickles/contexts_encoded.pkl', 'rb') as f:
-    #     contexts_encoded=pickle.load(f)
-    #     f.close()
     
-    # Encode questions and add token positions where answers start/end.
+    # Add index where answer ends.
+    for document in documents_train:
+        qas=document['qas']
+        for qa in qas:
+            answer=qa['answer']['text']
+            index_start=qa['answer']['answer_start']
+            index_end=index_start+len(answer)
+            qa['answer']['answer_end']=index_end
+    
+    # Encode "train" questions and add token positions where answer starts/ends.
     qas_encoded=[]
-    for idx, document in enumerate(documents):
+    for idx, document in enumerate(documents_train):
         print("Encoding", idx+1, "th Document..")
         context=document['context']
         qas=document['qas']
@@ -135,13 +71,48 @@ def main():
 
             qas_encoded_element.append({'question':question, 'token_start':token_start, 'token_end':token_end})
         qas_encoded.append(qas_encoded_element)
+    # Save encoded "train" questions and token positions as .pkl file.
     with open('./pickles/qas_encoded.pkl', 'wb') as f:
         pickle.dump(qas_encoded, f)
         f.close()
-    # Load encoded questions/token positions from pkl file.
-    # with open('./pickles/qas_encoded.pkl', 'rb') as f:
-    #     qas_encoded=pickle.load(f)
-    #     f.close()
+    
+    """
+    Process "dev" data.
+    """
+    
+    # Load "dev" data.
+    documents_dev=load_data(path='./KorQuADv2/', sort="dev")
+    
+    # Preprocess "dev" data.
+    preprocess(documents_dev)
+
+    # Encode "dev" contexts.
+    contexts_dev_encoded=[]
+    for idx, document in enumerate(documents_dev):
+        print("Encoding", idx+1, "th Document..")
+        contexts_dev_encoded.append(tokenizer.encode(document['context']))
+    # Save encoded "dev" contexts as .pkl file.
+    with open('./pickles/contexts_dev_encoded.pkl', 'wb') as f:
+        pickle.dump(contexts_dev_encoded, f)
+        f.close()
+    
+    # Encode "dev" questions.
+    qs_dev_encoded=[]
+    for idx, document in enumerate(documents_dev):
+        print("Encoding", idx+1, "th Document..")
+        qas=document['qas']
+
+        qs_dev_encoded_element=[]
+        for qa in qas:
+            question=tokenizer.encode(qa['question'])
+            id_question=qa['id']
+
+            qs_dev_encoded_element.append({'question':question, 'id':id_question})
+        qs_dev_encoded.append(qs_dev_encoded_element)
+    # Save encoded "dev" questions as .pkl file.
+    with open('./pickles/qs_dev_encoded.pkl', 'wb') as f:
+        pickle.dump(qs_dev_encoded, f)
+        f.close()
 
 if __name__=="__main__":
     main()
