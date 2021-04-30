@@ -121,32 +121,3 @@ class ElectraKorquad(nn.Module):
         output_span=self.pooler_span(hidden)
         
         return output_segment, output_span
-
-class ElectraKorquad(nn.Module):
-    
-    def __init__(self):
-        super().__init__()
-        
-        # Pre-trained Electra.
-        self.electra=ElectraModel.from_pretrained("monologg/koelectra-base-v3-discriminator")
-        self.config=self.electra.config
-        
-        # Pooling(Segment) layer.
-        self.pooler_segment=nn.Linear(self.config.hidden_size, 1)
-        self.attn=SelfAttention(self.config.hidden_size)
-        
-        # Pooling(Answer Span) layer.
-        self.pooler_span=nn.Linear(self.config.hidden_size, 2)
-        
-    def forward(self, x):
-        # Electra
-        hidden=self.electra(x)[0]
-        
-        CLSs=[]
-        for segment in hidden:
-            CLSs.append(segment[0])
-        output_segment=self.pooler_segment(self.attn(torch.stack(CLSs)))
-        
-        output_span=self.pooler_span(hidden)
-        
-        return output_segment, output_span
