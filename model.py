@@ -45,6 +45,30 @@ class DatasetKorquad(Dataset):
     def __len__(self):
         return len(self.datas)
 
+class DevsetKorquad(Dataset):
+    
+    def __init__(self, datas, ids, max_segment):
+        self.datas=[]
+        self.ids=ids
+        
+        for idx, data in enumerate(datas):
+            if len(data)<max_segment:
+                self.datas.append(data)
+            elif len(data)>=max_segment:
+                self.datas.append(data[0:max_segment])
+            
+        print(len(self.datas), "Datas")
+        print(len(self.ids), "IDs")
+    
+    def __getitem__(self,idx):
+        item={}
+        item['segments']=torch.tensor(self.datas[idx], dtype=torch.long)
+        item['id']=self.ids[idx]
+        return item
+    
+    def __len__(self):
+        return len(self.datas)
+
 class SelfAttention(nn.Module):
     
     def __init__(self,d_model):
