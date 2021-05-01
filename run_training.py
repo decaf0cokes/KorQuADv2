@@ -62,11 +62,17 @@ def main():
     
     # Prepare data for training model.
     datas, labels=prepare_data(contexts_encoded, qas_encoded)
-    print(len(datas), "Datas", len(labels), "Labels")
+    print(len(datas), "Datas &", len(labels), "Labels")
 
+    # PyTorch Dataset/DataLoader.
+    # "batch_size=1" DOES NOT MEAN "real batch size is 1".
+    # "batch_size=1" MEANS "GPU processes ONE data at a time" because of memory limitation.
+    # Optimizer steps per 32 datas processed(accumulation_steps).
     dataset=DatasetKorquad(datas=datas, labels=labels, max_segment=24)
-    dataloader=DataLoader(dataset,batch_size=1,shuffle=True)
+    dataloader=DataLoader(dataset=dataset, batch_size=1, shuffle=True)
+    accumulation_steps=32
 
+    # Load model on GPU or CPU. (I used one NVIDIA TITAN RTX GPU).
     model=ElectraKorquad()
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -74,14 +80,15 @@ def main():
 
     model.train()
 
-    # Learning Rate
+    # Loss functions.
+    criterion_segment=nn.BCEWithLogitsLoss()
+    criterion_span=nn.CrossEntropyLoss()
+    
+    # Learning rate.
     lr=1e-4
-
-    # Layerwise Learning Rate Decay
+    # Layer-wise learning rate decay.
     lr_decay=0.8
-
-    criterion=nn.BCEWithLogitsLoss()
-    criterion_=nn.CrossEntropyLoss()
+    # Optimizer.
     optim = AdamW(params=[
         {'params': model.pooler_segment.parameters(), 'lr': lr},
         {'params': model.attn.parameters(), 'lr': lr},
@@ -100,18 +107,12 @@ def main():
         {'params': model.electra.encoder.layer[0].parameters(), 'lr': lr*(lr_decay**12)},
         {'params': model.electra.embeddings.parameters(), 'lr': lr*(lr_decay**13)},
     ], lr=lr)
-
-    # Learning Rate Scheduler
+    # Learning rate scheduler.
     scheduler=get_linear_schedule_with_warmup(optimizer=optim, num_warmup_steps=0, num_training_steps=1919*2)
 
-    accumulation_steps=32
     for epoch in range(2):
         for index_batch, batch in enumerate(dataloader):
-    #         print(batch['segments'].shape)
-    #         print(batch['label_segment'])
-    #         print(batch['label_start'])
-    #         print(batch['label_end'])
-            
+
             segments=batch['segments'][0].to(device)
             label_segment=batch['label_segment'][0].to(device)
             
@@ -120,27 +121,28 @@ def main():
             # n(segments)*1 -> n(segments)
             output_segment=output_segment.squeeze(-1)
             
-            loss=criterion(output_segment, label_segment)/accumulation_steps
+            # "Segment" loss.
+            loss_segment=criterion_segment(output_segment, label_segment)
             
             # n(segments)*max_length*2 -> n(segments)*max_length*1
-            logits_start, logits_end=output_span.split(1,dim=-1)
+            logits_start, logits_end=output_span.split(1, dim=-1)
             # n(segments)*max_length
             logits_start=logits_start.squeeze(-1)
             # n(segments)*max_length
             logits_end=logits_end.squeeze(-1)
-            
-            # Segment where answer(ground truth) starts.
             # 1*max_length
             preds_start=logits_start[batch['label_start'][0].item()].unsqueeze(0)
             preds_end=logits_end[batch['label_end'][0].item()].unsqueeze(0)
-            
-            loss_start=criterion_(preds_start,batch['label_start'][1].to(device))
-            loss_end=criterion_(preds_end,batch['label_end'][1].to(device))
-            
-            loss_total=loss+loss_start+loss_end
-            
+
+            # "Span" loss.
+            loss_start=criterion_span(preds_start, batch['label_start'][1].to(device))
+            loss_end=criterion_span(preds_end, batch['label_end'][1].to(device))
+
+            # Total loss.
+            loss_total=(loss_segment+loss_start+loss_end)/accumulation_steps
             loss_total.backward()
             
+            # Real batch size is 32(accumulation_steps).
             if (index_batch+1)%accumulation_steps==0:
                 print('epoch', epoch+1, 'batch', (index_batch+1)/accumulation_steps)
                 print('Loss', loss_total.item(), '\n')
@@ -149,7 +151,7 @@ def main():
                 optim.zero_grad()
 
     model.eval()
-
+    # Save model.
     torch.save(model, './KoELECTRA.pt')
 
 if __name__=="__main__":

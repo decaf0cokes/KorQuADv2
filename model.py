@@ -5,6 +5,9 @@ import torch.nn as nn
 from transformers import ElectraModel
 
 class DatasetKorquad(Dataset):
+    """
+    Dataset for "train" set.
+    """
     
     def __init__(self, datas, labels, max_segment):
         self.datas=[]
@@ -13,19 +16,21 @@ class DatasetKorquad(Dataset):
         self.labels_end=[]
         
         for idx, label in enumerate(labels):
-            # GPU memory issue..
+            # CANNOT process data consists of over "max_segment"(24) segments.
+            # GPU memory limitation.
             if len(datas[idx])>max_segment:
                 continue
             
-            # Append data(segments of document).
+            # Data(segments of document).
             self.datas.append(datas[idx])
             
-            # Label of Segments
+            # Label of segments.
             label_segment=[0]*len(datas[idx])
             for index in range(label['start'][0], label['end'][0]+1):
                 label_segment[index]=1
             self.labels_segment.append(label_segment)
             
+            # Label(start/end) of tokens.
             self.labels_start.append(label['start'])
             self.labels_end.append(label['end'])
             
@@ -46,6 +51,9 @@ class DatasetKorquad(Dataset):
         return len(self.datas)
 
 class DevsetKorquad(Dataset):
+    """
+    Dataset for "dev" set.
+    """
     
     def __init__(self, datas, ids, max_segment):
         self.datas=[]
@@ -70,13 +78,19 @@ class DevsetKorquad(Dataset):
         return len(self.datas)
 
 class SelfAttention(nn.Module):
+    """
+    Self-attention among [CLS] tokens of each segment.
+    """
     
-    def __init__(self,d_model):
+    def __init__(self, d_model):
         super().__init__()
         
-        self.w_q=nn.Linear(d_model,d_model)
-        self.w_k=nn.Linear(d_model,d_model)
-        self.w_v=nn.Linear(d_model,d_model)
+        # Query.
+        self.w_q=nn.Linear(d_model, d_model)
+        # Key.
+        self.w_k=nn.Linear(d_model, d_model)
+        # Value.
+        self.w_v=nn.Linear(d_model, d_model)
         
         self.temperature=d_model**0.5
         self.dropout=nn.Dropout(0.1)
@@ -89,11 +103,15 @@ class SelfAttention(nn.Module):
         attn=torch.matmul(q/self.temperature, k.transpose(0,1))
         attn=self.dropout(nn.functional.softmax(attn, dim=-1))
         
-        output=torch.matmul(attn,v)
+        output=torch.matmul(attn, v)
         
         return output
 
 class ElectraKorquad(nn.Module):
+    """
+    "Segment" pooling layer: Find segments where answer exists.
+    "Span" pooling layer: Find answer span (start & end position).
+    """
     
     def __init__(self):
         super().__init__()
@@ -102,15 +120,14 @@ class ElectraKorquad(nn.Module):
         self.electra=ElectraModel.from_pretrained("monologg/koelectra-base-v3-discriminator")
         self.config=self.electra.config
         
-        # Pooling(Segment) layer.
+        # "Segment" pooling layer.
         self.pooler_segment=nn.Linear(self.config.hidden_size, 1)
         self.attn=SelfAttention(self.config.hidden_size)
         
-        # Pooling(Answer Span) layer.
+        # "Span" pooling layer.
         self.pooler_span=nn.Linear(self.config.hidden_size, 2)
         
     def forward(self, x):
-        # Electra
         hidden=self.electra(x)[0]
         
         CLSs=[]
