@@ -63,7 +63,7 @@ train set의 경우 1개의 document에서 평균 **2.17개**의 질의응답 �
 
 document는 dictionary형태로 **"context"** key를 통해 본문에, **"qas"** key를 통해 질의응답 쌍 list에 접근 가능.
 
-질의응답 쌍 역시 dictionary형태로 **"question"**과 **"answer"** key로 **질문**과 **정답** 정보에 접근 가능.
+질의응답 쌍 역시 dictionary형태로 **"question"** 과 **"answer"** key로 **질문**과 **정답** 정보에 접근 가능.
 
 정답 정보에는 정답 텍스트(**"text"**)와 context에서의 정답의 시작 위치(**"answer_start"**) 등이 포함.
 
@@ -426,3 +426,5 @@ ax.set_xlim([0,30000])
 ax.set_xlabel("Number of Tokens in Context",fontsize=12.5)
 plt.show()
 ```
+
+![Results](./contexts_length.png)

@@ -23,7 +23,7 @@ cd ../
 python process_data.py
 ```
 
-데이터 처리에는 **Context의 HTML Table Tag들을 처리**하고 (추후에 자세한 설명 Update 예정), **Context 및 Question들의 Encoding** 그리고 Train Set의 경우 **Answer Span의 Start/End Token Position을 추가**하는 과정을 포함한다.
+데이터 처리에는 **Context의 HTML Table Tag들을 처리**하고 ([Preprocessing 설명](https://github.com/decaf0cokes/KorQuADv2/blob/master/instruction/instruction.md)), **Context 및 Question들의 Encoding** 그리고 Train Set의 경우 **Answer Span의 Start/End Token Position을 추가**하는 과정을 포함한다.
 
 위의 Code는 Tokenizer의 Encoding으로 인하여 수행 시간이 많이 소요된다. 하여 미리 처리한 데이터들을 .pkl 형태로 /pickles 디렉토리에 저장해 놓았다. 아래 Code는 git LFS를 통해 용량이 큰 파일을 내려받아 압축을 해제하는 동작을 한다. (위의 Code 수행 생략 가능) 아래 Code만으로 데이터 처리를 완료할 수 있다!
 
